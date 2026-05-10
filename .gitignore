@@ -16,3 +16,6 @@ submodules/Mozjpeg/SharedHeaders
 submodules/OpenSSLEncryptionProvider/SharedHeaders
 core-xprojects/dav1d/build
 core-xprojects/tde2e/build
+.build/
+bin/
+.claude/

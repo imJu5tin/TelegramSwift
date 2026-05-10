@@ -21,7 +21,10 @@ NAME="openssl-1.1.1s";
 CROSS_TOP_MAC="$(xcode-select -p)/Platforms/MacOSX.platform"
 CROSS_SDK_MAC="MacOSX.sdk"
 
-git clone -b OpenSSL_1_1_1-stable https://github.com/openssl/openssl build/${NAME}
+n=0; until git clone -b OpenSSL_1_1_1-stable https://github.com/openssl/openssl build/${NAME}; do
+    n=$((n+1)); echo "openssl clone failed (attempt $n), retrying in 5s..." >&2
+    rm -rf "build/${NAME}"; sleep 5
+done
 
 
 SOURCE_DIR="$OUT_DIR/${NAME}"

@@ -2,20 +2,20 @@ import Cocoa
 
 public final class ApiEnvironment {
     public static var apiId:Int32 {
-        return 9
+        return 36631705
     }
     public static var apiHash:String {
-        return "3975f648bb682ee889f35483bc618d1c"
+        return "cca61a6450ac8b6d7faca79542d7a15e"
     }
-    
+
     public static var bundleId: String {
-        return "ru.keepcoder.Telegram"
+        return "com.n71903.telegram"
     }
     public static var intentsBundleId: String {
         return teamId + "." + bundleId + ".FocusIntents"
     }
     public static var teamId: String {
-        return "6N38VWS5BX"
+        return "T34Z9TRYBM"
     }
     
     

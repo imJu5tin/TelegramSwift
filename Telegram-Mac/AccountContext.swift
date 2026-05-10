@@ -448,6 +448,11 @@ final class AccountContext {
 
     #if !SHARE
     let fetchManager: FetchManager
+    private var _mcpRunner: Any?
+    @available(macOS 10.14, *)
+    var mcpRunner: MCPRunner? {
+        return self._mcpRunner as? MCPRunner
+    }
     let diceCache: DiceCache
     let inlinePacksContext: InlineStickersContext
     let cachedGroupCallContexts: AccountGroupCallContextCacheImpl
@@ -705,6 +710,13 @@ final class AccountContext {
         self.peerChannelMemberCategoriesContextsManager = PeerChannelMemberCategoriesContextsManager(self.engine, account: account)
         self.diceCache = DiceCache(postbox: account.postbox, engine: self.engine)
         self.inlinePacksContext = .init(postbox: account.postbox, engine: self.engine)
+        if #available(macOS 10.14, *) {
+            let runner = MCPRunner(account: account, engine: self.engine)
+            self._mcpRunner = runner
+            runner.start()
+        } else {
+            self._mcpRunner = nil
+        }
         self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: DownloadedMediaStoreManagerImpl(postbox: account.postbox, accountManager: sharedContext.accountManager))
         self.blockedPeersContext = BlockedPeersContext(account: account, subject: .blocked)
         self.storiesBlockedPeersContext = BlockedPeersContext(account: account, subject: .stories)
@@ -1143,6 +1155,105 @@ final class AccountContext {
         actionsDisposable.add(autologinToken.start(next: { [weak self] token in
             self?.autologinToken = token.autologinToken
         }))
+
+        #if !SHARE
+        if #available(macOS 10.14, *) {
+            if let runner = self._mcpRunner as? MCPRunner {
+                runner.openChatHandler = { [weak self] peerIdInt, messageIdInt in
+                    guard let self else { return }
+                    let peerId = PeerId(peerIdInt)
+                    let chatLocation: ChatLocation = .peer(peerId)
+                    let focusTarget: ChatFocusTarget?
+                    if let messageIdInt = messageIdInt {
+                        focusTarget = ChatFocusTarget(messageId: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: messageIdInt), string: nil)
+                    } else {
+                        focusTarget = nil
+                    }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        NSApp.activate(ignoringOtherApps: true)
+                        navigateToChat(navigation: self.bindings.rootNavigation(), context: self, chatLocation: chatLocation, focusTarget: focusTarget)
+                    }
+                }
+                runner.currentViewProvider = { [weak self] in
+                    var snapshot: [String: Any] = ["ready": false]
+                    let group = DispatchGroup()
+                    group.enter()
+                    DispatchQueue.main.async { [weak self] in
+                        defer { group.leave() }
+                        guard let self else {
+                            snapshot["error"] = "context-gone"
+                            return
+                        }
+                        let nav = self.bindings.rootNavigation()
+                        let top = nav.controller
+                        let typeName = String(describing: type(of: top))
+                        snapshot = [
+                            "ready": true,
+                            "controller_type": typeName,
+                            "stack_depth": nav.stackCount,
+                        ]
+                        if let chat = top as? ChatController {
+                            snapshot["is_chat"] = true
+                            snapshot["peer_id"] = chat.chatLocation.peerId.toInt64()
+                        } else if let chat = top as? ChatAdditionController {
+                            snapshot["is_chat"] = true
+                            snapshot["is_additional"] = true
+                            snapshot["peer_id"] = chat.chatLocation.peerId.toInt64()
+                        } else {
+                            snapshot["is_chat"] = false
+                        }
+                    }
+                    _ = group.wait(timeout: .now() + 2.0)
+                    return snapshot
+                }
+                runner.goBackHandler = { [weak self] in
+                    var didPop = false
+                    let group = DispatchGroup()
+                    group.enter()
+                    DispatchQueue.main.async { [weak self] in
+                        defer { group.leave() }
+                        guard let self else { return }
+                        let nav = self.bindings.rootNavigation()
+                        if nav.stackCount > 1 {
+                            nav.back(animated: true, forceAnimated: false, animationStyle: .pop)
+                            didPop = true
+                        }
+                    }
+                    _ = group.wait(timeout: .now() + 2.0)
+                    return didPop
+                }
+                runner.openUrlHandler = { [weak self] urlString in
+                    var result: [String: Any] = ["dispatched": false, "url": urlString]
+                    let group = DispatchGroup()
+                    group.enter()
+                    DispatchQueue.main.async { [weak self] in
+                        defer { group.leave() }
+                        guard let self else {
+                            result["error"] = "context-gone"
+                            return
+                        }
+                        let context = self
+                        let link = inApp(for: urlString.nsstring, context: context, peerId: nil, openInfo: { [weak context] peerId, toChat, messageId, initialAction in
+                            guard let context else { return }
+                            if toChat || initialAction != nil {
+                                context.bindings.rootNavigation().push(ChatAdditionController(context: context, chatLocation: .peer(peerId), focusTarget: .init(messageId: messageId), initialAction: initialAction))
+                            } else {
+                                PeerInfoController.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId)
+                            }
+                            context.window.makeKeyAndOrderFront(nil)
+                        }, hashtag: nil, command: nil, applyProxy: nil, confirm: false)
+                        result["link_kind"] = String(describing: link).components(separatedBy: "(").first ?? "unknown"
+                        NSApp.activate(ignoringOtherApps: true)
+                        execute(inapp: link, window: context.window)
+                        result["dispatched"] = true
+                    }
+                    _ = group.wait(timeout: .now() + 2.0)
+                    return result
+                }
+            }
+        }
+        #endif
     }
     
     @objc private func updateKeyWindow() {

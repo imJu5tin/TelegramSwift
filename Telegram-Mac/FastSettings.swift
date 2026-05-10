@@ -989,7 +989,7 @@ func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAnyway: Bo
 extension String {
     var fixedFileName: String {
         var string = self.replacingOccurrences(of: "/", with: "_")
-        
+
         var range = string.nsstring.range(of: ".")
         while range.location == 0 {
             string = string.nsstring.replacingCharacters(in: range, with: "_")

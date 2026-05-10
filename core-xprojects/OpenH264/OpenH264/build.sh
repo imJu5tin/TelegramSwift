@@ -16,7 +16,10 @@ mkdir -p ${BUILD_DIR}
 
 # Clone OpenH264 into the build directory if not already cloned
 if [ ! -d "${BUILD_DIR}/openh264" ]; then
-    git clone -b v2.4.1 https://github.com/cisco/openh264.git ${BUILD_DIR}/openh264
+    n=0; until git clone -b v2.4.1 https://github.com/cisco/openh264.git ${BUILD_DIR}/openh264; do
+        n=$((n+1)); echo "openh264 clone failed (attempt $n), retrying in 5s..." >&2
+        rm -rf "${BUILD_DIR}/openh264"; sleep 5
+    done
 fi
 
 # Define the output prefix for the final universal binary
